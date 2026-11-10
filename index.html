@@ -806,12 +806,25 @@ document.getElementById('bchat').onclick = () => {
     addMsg('bot', 'Hi! Ask me anything about SFBU: housing, transport, deadlines, wellness, career help. For finding a room, use the search bar.');
   if (chatPanel.classList.contains('open')) chatQ.focus();
 };
+const LOC_RE = /\b(where is|where's|where can i find|how do i get to|how to get to|take me to|navigate to|directions to)\b/i;
 async function sendChat() {
   const q = chatQ.value.trim();
   if (!q) return;
   chatQ.value = '';
   addMsg('user', q);
   if (!USE_AI) return addMsg('bot', 'Chat needs the DGX. Start the AI server and set USE_AI = true.');
+  // "where is the cafeteria?" is a map question: let the map search answer it first
+  if (USE_AI && LOC_RE.test(q) && !/\b(located|address)\b/i.test(q)) {
+    try {
+      const res = await fetch(AI_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q,
+          now: nowTime().toLocaleString('en-US', { weekday: 'long', hour: 'numeric', minute: '2-digit' }),
+          rooms: ALL_ROOMS.map(({ id, name, floor, keywords }) => ({ id, name, floor, keywords, classes: classesOf(id) })) }) });
+      const { go_to, answer } = await res.json();
+      const room = ALL_ROOMS.find(x => x.id === go_to);
+      if (room) { addMsg('bot', (answer || 'Taking you to ' + room.name + '.') + ' (shown on the map)'); lastQuery = q; return goToRoom(room, answer); }
+    } catch (e) { /* map search unavailable: fall through to the guide */ }
+  }
   const wait = addMsg('bot', 'Thinking...');
   try {
     const res = await fetch(CHAT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }) });

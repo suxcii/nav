@@ -157,8 +157,16 @@ def transcribe(body: dict):
     if rate != 16000 and len(audio):                      # simple resample to 16 kHz
         n = int(len(audio) * 16000 / rate)
         audio = np.interp(np.linspace(0, len(audio) - 1, n), np.arange(len(audio)), audio).astype(np.float32)
+    # silence guard: Whisper invents words like "you" from silence, so skip near-silent or tiny recordings
+    rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) else 0.0
+    print(f"[voice] {len(audio) / 16000:.1f}s of audio, loudness {rms:.4f}")
+    if len(audio) < 8000 or rms < 0.003:
+        return {"text": "", "device": S["dev"]}
     out = S["pipe"]({"raw": audio, "sampling_rate": 16000}, generate_kwargs={"language": "en", "task": "transcribe"})
-    return {"text": out["text"].strip(), "device": S["dev"]}
+    text = out["text"].strip()
+    if text.lower().strip(" .!?,") in {"you", "thank you", "thanks", "thanks for watching", "bye"}:
+        text = ""                                          # typical Whisper guesses on empty audio
+    return {"text": text, "device": S["dev"]}
 
 
 # ------------------------------------------------------------------

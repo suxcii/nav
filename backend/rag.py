@@ -24,13 +24,19 @@ EMBED_MODEL = "all-MiniLM-L6-v2"
 TOP_K = 8                                                        # was 5 in the standalone guide
 MIN_SIM = float(os.environ.get("RAG_MIN_SIM", "0.15"))           # below this, nothing relevant was found
 
-REFUSAL = "I don't have enough information on that in my documents."
+REFUSAL = ("I don't have enough information on that in my documents. I can help with housing, transport, deadlines, "
+           "wellness, career help and where to eat. For anything else, ask at the front desk of the Main Building.")
 
 # Fixes the "work experience" -> CPT failure from the eval: add the words the documents actually use.
 EXPAND = [
     (r"work experience|job|work while|work permit|work on campus|intern", "internship CPT Curricular Practical Training"),
     (r"airport|get to campus|get to sfbu|from sfo|from sjc|from oak", "airport BART Uber transportation"),
     (r"mental|therapy|counsel|stress|anxious|depress", "TimelyCare counseling wellness"),
+    (r"lost|stolen|replace|broke|who do i (ask|contact)|who to contact", "who to contact front desk Student Life"),
+    (r"bus|transit|easypass|clipper", "AC Transit EasyPass front desk Michael Leinhos"),
+    (r"eat|food|restaurant|lunch|dinner|cafeteria|cafe\b|coffee|grocery", "nearby restaurants coffee dining where to eat Pacific Commons"),
+    (r"stalk|follow(ing|ed) me|unsafe|threat|harass|scared|afraid|abuse|bully", "safety Title IX Dean of Students 911 harassment report"),
+    (r"friend|upset|sad|lonely|mad at|fight|roommate|homesick", "counseling wellness TimelyCare talk to someone"),
     (r"dorm|housing|apartment|move in|bring", "residential life housing amenities"),
 ]
 
@@ -40,10 +46,11 @@ Your job is to answer student questions using ONLY the information provided in t
 
 Rules you must follow:
 1. Only use information from the provided documents to answer. Do not use your general knowledge.
-2. If the documents don't contain enough information to answer the question, say exactly: "I don't have enough information on that in my documents."
-3. Do not write a sources list. The app adds it.
+2. If the documents contain nothing relevant to the question, say exactly: "I don't have enough information on that in my documents." If they answer only part of the question, give the part they do answer and briefly say what the documents do not cover.
+3. Do not write a sources list and never mention "Document" numbers or file names in your answer. The app adds the sources.
 4. Keep your answer short, clear and easy to understand for a new student.
-5. Never make up information that isn't in the documents."""
+5. Never make up information that isn't in the documents.
+6. Do not guess locations. Only say something is "on campus" or "in the cafeteria" if the documents say so. Restaurants listed as nearby are NOT on campus."""
 
 _S = {}
 _lock = threading.Lock()
@@ -108,7 +115,7 @@ def retrieve(question, top_k=TOP_K):
 
 
 def generate(question, chunks):
-    context = "\n\n---\n\n".join(f"[Document {i + 1}: {c['source']}]\n{c['text']}" for i, c in enumerate(chunks))
+    context = "\n\n---\n\n".join(f"[Source: {c['source']}]\n{c['text']}" for i, c in enumerate(chunks))
     user = (f"Here are the relevant documents:\n\n{context}\n\n---\n\n"
             f"Student question: {question}\n\nAnswer using only the documents above.")
     r = requests.post(OLLAMA, json={
@@ -132,9 +139,11 @@ def ask(question):
         return {"answer": "(AI model is offline, so here are the closest passages from the guide.)\n\n" + text,
                 "sources": list(dict.fromkeys(c["source"] for c in top))}
     answer = re.sub(r"\n*\s*\**Sources?:?\**.*$", "", answer, flags=re.I | re.S).strip()   # we add sources ourselves
+    answer = re.sub(r"^(according to|based on|from) (the )?(document|source)s?\s*\d*\s*[:,]?\s*(\([^)]*\)|[\w\-.]+\.(pdf|txt))?\s*[:,]?\s*", "", answer, flags=re.I)
+    answer = answer[:1].upper() + answer[1:]
     if "don't have enough information" in answer.lower():
         return {"answer": REFUSAL, "sources": []}
-    sources = list(dict.fromkeys(c["source"] for c in chunks))
+    sources = list(dict.fromkeys(c["source"] for c in chunks[:3]))     # only the best-matching files
     return {"answer": answer, "sources": sources}
 
 
