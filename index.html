@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SFBU Nav - Indoor Navigation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  /* ---------- SCI-FI THEME ---------- */
+  :root { --neon: #00e5ff; --neon2: #ff2bd6; --glass: rgba(10, 18, 32, .72); --text: #d9f7ff; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: 'Exo 2', system-ui, sans-serif; background: #000; color: var(--text); }
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: repeating-linear-gradient(0deg, rgba(0,229,255,.035) 0 1px, transparent 1px 3px); }   /* scanlines */
+  #brand { position: absolute; top: 14px; left: 14px; z-index: 11; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #brand img { height: 40px; background: rgba(255,255,255,.95); border-radius: 10px; padding: 4px 8px;
+               box-shadow: 0 0 14px rgba(0,229,255,.55); }
+  #brand span { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 4px; color: var(--neon);
+                text-shadow: 0 0 8px var(--neon); }
+  #ui { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: min(520px, 92vw); z-index: 10; }
+  #search { display: flex; background: var(--glass); border: 1px solid var(--neon); border-radius: 40px; overflow: hidden;
+            box-shadow: 0 0 18px rgba(0,229,255,.45), inset 0 0 12px rgba(0,229,255,.15); backdrop-filter: blur(6px); }
+  #search input { flex: 1; border: 0; padding: 14px 20px; font-size: 16px; outline: none; min-width: 0;
+                  background: transparent; color: var(--text); font-family: inherit; }
+  #search input::placeholder { color: rgba(217,247,255,.5); }
+  #search button { border: 0; background: linear-gradient(90deg, #00b8d4, var(--neon)); color: #001018; padding: 0 22px;
+                   font-size: 15px; cursor: pointer; font-family: 'Orbitron', sans-serif; font-weight: 700; letter-spacing: 1px; }
+  .row { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; }
+  .row button { border: 1px solid rgba(0,229,255,.5); border-radius: 20px; padding: 7px 15px; background: var(--glass);
+                color: var(--neon); cursor: pointer; font-size: 13px; font-family: 'Orbitron', sans-serif; letter-spacing: 1px; }
+  .row button.on { background: var(--neon); color: #001018; box-shadow: 0 0 14px var(--neon); }
+  #answer { margin-top: 10px; background: var(--glass); border: 1px solid rgba(0,229,255,.5); border-radius: 14px;
+            padding: 10px 16px; display: none; box-shadow: 0 0 16px rgba(0,229,255,.3); backdrop-filter: blur(6px); }
+  #answer button { margin-left: 8px; border: 0; border-radius: 14px; padding: 6px 12px; background: var(--neon2); color: #fff;
+                   cursor: pointer; font-size: 13px; box-shadow: 0 0 12px var(--neon2); font-family: inherit; }
+  .label { background: rgba(0,12,24,.82); color: var(--neon); border: 1px solid var(--neon); padding: 3px 9px; border-radius: 4px;
+           font-size: 11px; font-family: 'Orbitron', sans-serif; letter-spacing: .5px; cursor: pointer; white-space: nowrap;
+           text-shadow: 0 0 6px var(--neon); box-shadow: 0 0 8px rgba(0,229,255,.45); }
+  .label .cls { margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10px; }
+  .label .cls.now { background: var(--neon2); color: #fff; text-shadow: none; }
+  .label .cls.soon { background: var(--neon); color: #001018; text-shadow: none; }
+  .label.hit { color: #fff; border-color: var(--neon2); background: rgba(60,0,50,.85); text-shadow: 0 0 8px var(--neon2);
+               box-shadow: 0 0 14px var(--neon2); }
+  .cam { width: 26px; height: 26px; border-radius: 50%; background: rgba(0,12,24,.9); border: 2px solid var(--neon2);
+         display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer;
+         box-shadow: 0 0 12px var(--neon2); animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 22px var(--neon2); } }
+  /* 360 photo overlay */
+  /* hidden photo viewer must not catch clicks (its Back button sits where CLASSES is) */
+  #pano-wrap { position: absolute; inset: 0; z-index: 50; background: #000; opacity: 0; pointer-events: none;
+               visibility: hidden; transition: opacity .6s, visibility 0s linear .6s; }
+  #pano-wrap.open { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .6s, visibility 0s; }
+  #pano { width: 100%; height: 100%; }
+  #pano-bar { position: absolute; top: 14px; left: 52px; right: 14px; display: flex; justify-content: space-between; align-items: center; z-index: 60; pointer-events: none; }
+  #pano-where { background: var(--glass); border: 1px solid var(--neon); border-radius: 6px; padding: 8px 14px; font-weight: 600;
+                color: var(--neon); font-family: 'Orbitron', sans-serif; font-size: 13px; box-shadow: 0 0 12px rgba(0,229,255,.4); }
+  #pano-close { pointer-events: auto; border: 1px solid var(--neon2); border-radius: 20px; padding: 10px 16px; background: var(--glass);
+                color: #fff; font-size: 14px; cursor: pointer; box-shadow: 0 0 12px var(--neon2); font-family: inherit; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; z-index: 60; background: rgba(0,10,20,.85); border: 1px solid var(--neon);
+             border-radius: 8px; padding: 6px; box-shadow: 0 0 12px rgba(0,229,255,.4); }
+  #where { border: 0; border-left: 1px solid rgba(0,229,255,.4); background: transparent; color: var(--neon2); font-size: 18px;
+           padding: 0 14px; cursor: pointer; }
+  #mic { border: 0; border-left: 1px solid rgba(0,229,255,.4); background: transparent; color: var(--neon); font-size: 18px; padding: 0 12px; cursor: pointer; }
+  #mic svg, #where svg { display: block; }
+  #answer button { display: inline-flex; align-items: center; gap: 6px; }
+  .cam svg { display: block; color: #fff; }
+  #mic.on { background: var(--neon2); color: #fff; animation: pulse 1s infinite; }
+  .here { font-family: 'Orbitron', sans-serif; font-size: 11px; color: #fff; background: var(--neon2); padding: 4px 10px; border-radius: 4px;
+          box-shadow: 0 0 18px var(--neon2); animation: pulse 1.2s infinite; white-space: nowrap; }
+  /* classes panel */
+  #topbtns { position: absolute; top: 16px; right: 16px; z-index: 12; display: flex; gap: 8px; }
+  #bclasses, #bchat { border: 1px solid var(--neon); border-radius: 22px;
+              background: var(--glass); color: var(--neon); padding: 9px 14px; cursor: pointer; display: flex; align-items: center;
+              gap: 8px; font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 1px; box-shadow: 0 0 14px rgba(0,229,255,.4); }
+  #bclasses svg { display: block; }
+  #bclasses .badge { background: var(--neon2); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 11px; display: none; }
+  #classes { position: absolute; top: 164px; right: 16px; bottom: 16px; width: min(340px, 90vw); z-index: 12; overflow-y: auto;
+             background: rgba(5, 12, 24, .9); border: 1px solid var(--neon); border-radius: 12px; padding: 14px;
+             box-shadow: 0 0 22px rgba(0,229,255,.35); backdrop-filter: blur(8px); transform: translateX(120%); transition: transform .3s; }
+  #classes.open { transform: none; }
+  #classes h3 { margin: 14px 0 6px; font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--neon); }
+  #classes h3:first-child { margin-top: 0; }
+  .citem { border: 1px solid rgba(0,229,255,.3); border-radius: 8px; padding: 9px 11px; margin-bottom: 7px; cursor: pointer; }
+  .citem:hover { border-color: var(--neon); box-shadow: 0 0 10px rgba(0,229,255,.4); }
+  .citem .t { font-weight: 600; color: #fff; }
+  .citem .m { font-size: 12px; color: rgba(217,247,255,.75); margin-top: 3px; }
+  .citem .s { float: right; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+  .citem .s.now { background: var(--neon2); color: #fff; }
+  .citem .s.soon { background: var(--neon); color: #001018; }
+  .citem.now { border-color: var(--neon2); }
+  .citem.done { opacity: .55; }
+  #classes .empty { font-size: 12px; color: rgba(217,247,255,.5); }
+
+  /* chat panel (Unofficial Guide) */
+  #chat { position: absolute; top: 164px; right: 16px; bottom: 16px; width: min(340px, 90vw); z-index: 12; display: flex; flex-direction: column;
+          background: rgba(5, 12, 24, .9); border: 1px solid var(--neon); border-radius: 12px; padding: 12px;
+          box-shadow: 0 0 22px rgba(0,229,255,.35); backdrop-filter: blur(8px); transform: translateX(120%); transition: transform .3s; }
+  #chat.open { transform: none; }
+  #chatlog { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+  .msg { max-width: 90%; padding: 8px 12px; border-radius: 12px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--neon); color: #001018; }
+  .msg.bot { align-self: flex-start; border: 1px solid rgba(0,229,255,.35); color: var(--text); }
+  .msg .src { margin-top: 6px; font-size: 11px; color: rgba(217,247,255,.6); }
+  .msg button { margin-top: 8px; border: 0; border-radius: 14px; padding: 6px 12px; background: var(--neon2); color: #fff; cursor: pointer;
+                font-size: 13px; box-shadow: 0 0 12px var(--neon2); font-family: inherit; }
+  #chatform { display: flex; gap: 6px; border-top: 1px solid rgba(0,229,255,.3); padding-top: 10px; }
+  #chatq { flex: 1; min-width: 0; background: transparent; border: 1px solid rgba(0,229,255,.5); border-radius: 20px; padding: 9px 14px;
+           color: var(--text); font-size: 14px; font-family: inherit; outline: none; }
+  #chatsend { border: 0; border-radius: 20px; padding: 0 14px; background: var(--neon); color: #001018; cursor: pointer; font-family: 'Orbitron', sans-serif; font-weight: 700; }
+  @media (max-width: 700px) { #brand span { display: none; } #brand img { height: 30px; } #ui { top: 64px; } }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css">
+<script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+</head>
+<body>
+<div id="brand"><img src="assets/images/sfbu_logo.png" alt="SFBU"><span>SFBU&nbsp;NAV</span></div>
+<div id="topbtns">
+<button id="bchat" title="Ask the campus guide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>CHAT</button>
+<button id="bclasses" title="Show all classes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>CLASSES</span><span class="badge" id="cbadge"></span></button>
+</div>
+<div id="chat"><div id="chatlog"></div><div id="chatform"><input id="chatq" placeholder="Ask about SFBU life..." /><button id="chatsend">Send</button></div></div>
+<div id="classes"></div>
+<div id="ui">
+  <div id="search">
+    <input id="q" placeholder="Where are you headed?" />
+    <button id="mic" title="Talk: click, speak, click again"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
+    <button id="where" title="Where am I? Upload a photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></button>
+    <button id="go">Go</button>
+    <input id="whereFile" type="file" accept="image/*" hidden />
+  </div>
+  <div class="row" id="floorBtns"></div>
+  <div class="row">
+    <button id="b2d">2D</button>
+    <button id="b3d" class="on">3D</button>
+    <button id="breset" title="Put the mascot back at the entrance and clear the route">Reset</button>
+  </div>
+  <div id="answer"></div>
+</div>
+
+<div id="pano-wrap">
+  <div id="pano"></div>
+  <div id="pano-bar">
+    <div id="pano-where"></div>
+    <button id="pano-close">Back to map</button>
+  </div>
+  <canvas id="minimap" width="200" height="130"></canvas>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ------------------------------------------------------------------
+// 1. YOUR BUILDING (edit this, or later let the DGX vision AI make it)
+//    One entry per floor. Units = meters (1 square on the sketch sheet = 2 m).
+//    outline = the outside walls of the floor (w x d), entrance = gap in the outside wall.
+//    Each room is a rectangle: x, z = top-left corner, w = width, d = depth.
+//    door = which side the door is on: "top", "bottom", "left", "right",
+//           or "open" (no walls, like a study area or walkway).
+//    Floor 1 below = traced from your SFBU sketch (sizes are approximate).
+// ------------------------------------------------------------------
+const BUILDING = {
+  name: "SFBU",
+  floors: [
+    { id: 1, name: "1st Floor",
+      outline: { w: 85, d: 37, entrance: { side: "bottom", from: 63, to: 69 } },
+      rooms: [
+      { id: "library",     name: "Library",           x: 0,    z: -6,   w: 7,    d: 6,    door: "right",  color: "#ffd8a8", keywords: ["library", "books", "read"] },
+      { id: "walkway",     name: "Walkway", x: 7.1, z: -6, w: 5.7,  d: 14.1, door: "open",   color: "#e9ecef", keywords: ["walkway", "way"] },
+      { id: "cafeteria",   name: "Cafeteria",         x: 22,   z: 0,    w: 15,   d: 8, door: "bottom", color: "#ffe066", keywords: ["food", "eat", "hungry", "lunch", "cafeteria", "coffee", "snack"] },
+      { id: "office_tl",   name: "Office",            x: 0,    z: 0,    w: 7.1,  d: 8.1,  door: "right",  color: "#ffc9c9", keywords: ["office"] },
+      { id: "study_tl",    name: "Study Space",       x: 0,    z: 8.1,  w: 10.5, d: 2.4,  door: "open",   color: "#d3f9d8", keywords: ["study", "quiet", "sit"] },
+      { id: "office_l",    name: "Office",            x: 0,    z: 10.5, w: 7.8,  d: 3.1,  door: "right",  color: "#ffc9c9", keywords: ["office"] },
+      { id: "lab101",      name: "Computer Lab 101",  x: 0,    z: 13.6, w: 10.5, d: 11.8, door: "right",  color: "#a5d8ff", keywords: ["101", "lab", "computer lab", "computers", "pc"] },
+      { id: "offices_bl",  name: "Offices",           x: 0,    z: 25.4, w: 12.1, d: 11.5, door: "right",  color: "#ffc9c9", keywords: ["offices", "office", "staff"] },
+      { id: "lrc",         name: "LRC",               x: 18,   z: 10,   w: 16.8, d: 19.4, door: "right",  color: "#d0bfff", keywords: ["lrc", "learning", "resource", "tutor", "computer", "study"] },
+      { id: "study_b",     name: "Study Space",       x: 12.1, z: 29.4, w: 19,   d: 7.5,  door: "open",   color: "#d3f9d8", keywords: ["study", "quiet", "group"] },
+      { id: "lounge",      name: "Student Lounge", x: 37,   z: 4, w: 22,   d: 11, door: ["bottom", "top"], color: "#b2f2bb", keywords: ["lounge", "prayer", "pray", "relax", "student lounge"] },
+      { id: "stairs1",     name: "Stairs",            x: 43,   z: 0,    w: 10,   d: 4,   door: "bottom", color: "#ced4da", keywords: ["stairs", "upstairs", "2nd floor", "second floor"] },
+      { id: "elevator1",   name: "Elevator",          x: 61,   z: 0,    w: 5,    d: 15,   door: "bottom", color: "#ced4da", keywords: ["elevator", "lift", "wheelchair", "upstairs"] },
+      { id: "office_tr",   name: "Office",            x: 73,   z: 0,    w: 12,   d: 7.5, door: "bottom", color: "#ffc9c9", keywords: ["office"] },
+      { id: "register",    name: "Register",          x: 48,   z: 18.3, w: 17.5, d: 5.2,  door: "bottom", color: "#fff3bf", keywords: ["register", "registrar", "enroll", "tuition", "pay", "admin", "help"] },
+      { id: "office_r",    name: "Office",            x: 79.5, z: 14,   w: 5.5,  d: 14, door: "left",   color: "#ffc9c9", keywords: ["office"] },
+      { id: "entrance",    name: "Entrance",          x: 61,   z: 33,   w: 10,   d: 4,    door: "open",   color: "#fff9db", keywords: ["entrance", "front door", "exit", "door", "outside"] },
+    ]},
+    { id: 2, name: "2nd Floor",
+      // traced from your 2nd-floor sketch (sizes approximate)
+      outline: { w: 85, d: 37 },
+      rooms: [
+      { id: "room203",   name: "Room 203",       x: 0,    z: 0,    w: 21.5, d: 9.8,  door: "bottom", color: "#a5d8ff", keywords: ["203", "class", "classroom"] },
+      { id: "room204",   name: "Room 204",       x: 21.5, z: 0,    w: 14.3, d: 8.4,  door: "bottom", color: "#a5d8ff", keywords: ["204", "class", "classroom"] },
+      { id: "room206",   name: "Room 206",       x: 35.8, z: 0,    w: 16.2, d: 8.6,  door: "bottom", color: "#a5d8ff", keywords: ["206", "class", "classroom"] },
+      { id: "room208",   name: "Room 208",       x: 52,   z: 0,    w: 15.5, d: 8.0,  door: "bottom", color: "#a5d8ff", keywords: ["208", "class", "classroom"] },
+      { id: "room209",   name: "Room 209",       x: 67.5, z: 0,    w: 17.5, d: 8.6,  door: "bottom", color: "#a5d8ff", keywords: ["209", "class", "classroom"] },
+      { id: "room202",   name: "Room 202",       x: 0,    z: 9.8,  w: 23.5, d: 7.9,  door: "right",  color: "#a5d8ff", keywords: ["202", "class", "classroom"] },
+      { id: "stairs2",   name: "Stairs",         x: 0,    z: 17.7, w: 14.2, d: 8.7,  door: "bottom",  color: "#ced4da", keywords: ["stairs", "downstairs", "1st floor", "first floor"] },
+      { id: "elevator2", name: "Elevator",       x: 14.2, z: 19.8, w: 2.8,  d: 7,    door: "right",  color: "#ced4da", keywords: ["elevator", "lift", "wheelchair", "downstairs"] },
+      { id: "room205",   name: "Room 205",       x: 35.6, z: 14.6, w: 16.4, d: 7.9,  door: "top",    color: "#a5d8ff", keywords: ["205", "class", "classroom"] },
+      { id: "room207",   name: "Room 207 - Makerspace",       x: 52,   z: 14.6, w: 18.5, d: 6.9,  door: "top",    color: "#a5d8ff", keywords: ["207", "maker", "makerspace", "3d printer", "printer", "build", "robot", "lab", "tools"] },
+      { id: "restroom2", name: "Restroom",       x: 36.7, z: 22.5, w: 15.5, d: 4,    door: "left",   color: "#d0bfff", keywords: ["bathroom", "toilet", "restroom", "wc"] },
+      { id: "room201_2f", name: "Room 201",      x: 35.8, z: 26.5, w: 16.7, d: 10.5, door: "left",   color: "#a5d8ff", keywords: ["201", "class", "classroom"] },
+      { id: "room210",   name: "Room 210",       x: 53,   z: 21.5, w: 17.5, d: 10.8, door: "right",  color: "#a5d8ff", keywords: ["210", "class", "classroom"] },
+      { id: "estair2",   name: "Emergency Stair", x: 53,  z: 32.3, w: 14.5, d: 4.7,  door: "right",  color: "#ff8787", keywords: ["exit", "emergency", "fire", "stair"] },
+      { id: "room211",   name: "Room 211",       x: 67.5, z: 31,   w: 17.5, d: 6,    door: "top",    color: "#a5d8ff", keywords: ["211", "class", "classroom"] },
+      { id: "study2",    name: "Study Space",    x: 0,    z: 27,   w: 35.6, d: 10,   door: "open",   color: "#d3f9d8", keywords: ["study", "tables", "chairs", "sit", "quiet"] },
+    ]},
+  ]
+};
+
+// ------------------------------------------------------------------
+// 1a. CLASS SCHEDULE  --  from SFBU Course Registration (Fall 2026)
+//    room    = room id from the list above (for example "room209")
+//    days    = any of "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+//    start / end = 24-hour time, "HH:MM"
+//    course  = put the real course name here (the copied text did not include it)
+// ------------------------------------------------------------------
+const SCHEDULE = [
+  { room: "room202",    course: "ACC110 - Aquilina",        section: "A", days: ["Tue", "Thu"], start: "16:00", end: "17:15", teacher: "Michael Aquilina",      status: "Waitlisted" },
+  { room: "room202",    course: "ACC110 - Aquilina",        section: "B", days: ["Tue", "Thu"], start: "10:45", end: "12:00", teacher: "Michael Aquilina",      status: "Closed" },
+  { room: "room209",    course: "APP101 - Mata Mendoza",    section: "A", days: ["Mon", "Wed"], start: "13:00", end: "14:15", teacher: "Andriana Mata Mendoza", status: "Closed" },
+  { room: "room209",    course: "APP101 - Mata Mendoza",    section: "B", days: ["Mon", "Wed"], start: "14:30", end: "15:45", teacher: "Andriana Mata Mendoza", status: "Open" },
+  { room: "room209",    course: "APP101 - Mata Mendoza",    section: "C", days: ["Mon", "Wed"], start: "09:00", end: "10:15", teacher: "Andriana Mata Mendoza", status: "Open" },
+  { room: "room211",    course: "APP102 - Kaur",            section: "A", days: ["Wed"],        start: "13:00", end: "15:45", teacher: "Ravneet Kaur",          status: "Closed" },
+  { room: "room201_2f", course: "APP102 - Kaur",            section: "B", days: ["Fri"],        start: "15:00", end: "17:45", teacher: "Ravneet Kaur",          status: "Open" },
+  { room: "room211",    course: "APP103 - Hotchkiss",       section: "A", days: ["Tue", "Thu"], start: "10:30", end: "11:45", teacher: "Jason Hotchkiss",       status: "Closed" },
+  { room: "room209",    course: "APP103 - Hotchkiss",       section: "B", days: ["Tue", "Thu"], start: "13:00", end: "14:15", teacher: "Jason Hotchkiss",       status: "Closed" },
+  { room: "room211",    course: "APP103 - Hotchkiss",       section: "B (M/W)", days: ["Mon", "Wed"], start: "10:30", end: "11:45", teacher: "Jason Hotchkiss", status: "Open" },
+  { room: "room201_2f", course: "APP201 - Ramirez",         section: "A", days: ["Mon", "Wed"], start: "16:30", end: "17:45", teacher: "Jesse Ramirez",         status: "Closed" },
+  { room: "room201_2f", course: "APP201 - Ramirez",         section: "B", days: ["Tue", "Thu"], start: "16:30", end: "17:45", teacher: "Jesse Ramirez",         status: "Closed" },
+  { room: "room201_2f", course: "APP201 - Ramirez",         section: "C", days: ["Mon", "Wed"], start: "15:00", end: "16:15", teacher: "Jesse Ramirez",         status: "Closed" },
+];
+
+// ------------------------------------------------------------------
+// 1b. YOUR 360 PHOTOS
+//    For each photo: where you stood on the grid (x, z), which floor,
+//    and which way the phone faced when the photo STARTED:
+//    "top", "right", "bottom" or "left" of your paper.
+//    Tip: always start facing the top of your paper -> always "top".
+//    Arrows between photos are made AUTOMATICALLY:
+//    photos link if they are close AND (in the same room OR one is in a hallway).
+//    "links" = extra manual links, e.g. stairs to the other floor.
+//    If arrows point the wrong way, add  yawFix: 90  (or -90, 180) to that photo.
+// ------------------------------------------------------------------
+const PHOTOS = [
+  // floor 1: SAMPLE photos placed on your real layout - replace with real panoramas
+  { id: "hall_1",    file: "assets/photos/hall_1.jpg",    floor: 1, x: 40, z: 17, facing: "top", links: ["hall_2f_1"] },
+  { id: "hall_2",    file: "assets/photos/hall_2.jpg",    floor: 1, x: 45, z: 28, facing: "top" },
+  { id: "hall_3",    file: "assets/photos/hall_3.jpg",    floor: 1, x: 70, z: 22, facing: "top" },
+  { id: "lobby",     file: "assets/photos/lobby.jpg",     floor: 1, x: 66, z: 35, facing: "top" },
+  { id: "office",    file: "assets/photos/office.jpg",    floor: 1, x: 26, z: 19, facing: "top" },
+  { id: "lounge",    file: "assets/photos/lounge.jpg",    floor: 1, x: 48, z: 9,  facing: "top" },
+  { id: "hall_2f_1", file: "assets/photos/hall_2f_1.jpg", floor: 2, x: 20, z: 22, facing: "top", links: ["hall_1"] },
+  // YOUR REAL SFBU PANORAMAS
+  { id: "sfbu_hallway",   file: "assets/photos/sfbu_hallway.jpg",   floor: 2, x: 76, z: 11.5, facing: "top" },
+  { id: "sfbu_classroom", file: "assets/photos/sfbu_classroom.jpg", floor: 2, x: 61, z: 18,   facing: "top" },   // Makerspace = Room 207
+];
+const MAX_LINK = 18;   // meters: photos further apart than this don't get an arrow
+
+// What kind of photos are you using?
+//   'panorama' = normal phone Panorama mode (a long wide strip). Turn LEFT -> RIGHT, a full circle.
+//   '360'      = full 360 photo from a 360 app or camera.
+// Panorama: how far you turned is guessed automatically. If arrows look off, add  sweep: 270  (degrees you turned).
+const PHOTO_MODE = 'panorama';
+
+const WALL_H = 2.6, WALL_T = 0.15, FLOOR_GAP = 6;   // FLOOR_GAP = height between floors in the 3D view
+
+// ------------------------------------------------------------------
+// 2. SCENE SETUP
+// ------------------------------------------------------------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#000000');
+scene.fog = new THREE.FogExp2(0x000000, 0.004);
+
+// starfield
+{ const n = 2500, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 250 + Math.random() * 500, t = Math.random() * Math.PI * 2, u = Math.random() * 2 - 1;
+    pos[i*3] = 42 + r * Math.sqrt(1 - u*u) * Math.cos(t); pos[i*3+1] = Math.abs(r * u) * 0.8 + 20; pos[i*3+2] = 18 + r * Math.sqrt(1 - u*u) * Math.sin(t);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9fefff, size: 1.2, sizeAttenuation: true, fog: false })));
+}
+// glowing ground grid
+{ const grid = new THREE.GridHelper(400, 200, 0x00e5ff, 0x0a3a4a);
+  grid.position.set(42, -0.3, 18); grid.material.transparent = true; grid.material.opacity = 0.35;
+  scene.add(grid); }
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+labelRenderer.domElement.style.zIndex = '1';   // keep map labels under the panels
+document.body.appendChild(labelRenderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0x88ccff, 0x080820, 0.9));
+const sun = new THREE.DirectionalLight(0xbfefff, 0.9);
+sun.position.set(20, 50, 10);
+sun.castShadow = true;
+sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
+sun.position.set(60, 60, 20); sun.target.position.set(42, 0, 18); scene.add(sun.target);
+scene.add(sun);
+
+// ------------------------------------------------------------------
+// 3. BUILD 3D FROM THE FLOOR PLAN (one group per floor, stacked)
+// ------------------------------------------------------------------
+const wallMat = new THREE.MeshStandardMaterial({ color: '#07121f', emissive: '#00303d', emissiveIntensity: 0.6,
+                                                transparent: true, opacity: 0.85 });
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.9 });
+// sci-fi look for room floors: dark glass tinted with the room color, glowing a little
+const roomMat = c => { const col = new THREE.Color(c);
+  return new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.25), emissive: col, emissiveIntensity: 0.35,
+                                          metalness: 0.3, roughness: 0.4 }); };
+const floorGroups = {};   // floor id -> THREE.Group
+const labels = {};        // room id  -> { div, obj }
+const roomFloor = {};     // room id  -> floor object
+const wallsByFloor = {};  // floor id -> list of wall segments [x1, z1, x2, z2] (used by route finding)
+let buildingFloor = null; // floor being built right now
+const floorBases = [];    // the floor surfaces (for double-click to move the mascot)
+
+function addWall(group, x1, z1, x2, z2) {
+  const len = Math.hypot(x2 - x1, z2 - z1);
+  if (len < 0.01) return;
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(len, WALL_H, WALL_T), wallMat);
+  wall.position.set((x1 + x2) / 2, WALL_H / 2, (z1 + z2) / 2);
+  wall.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+  wall.castShadow = true; wall.receiveShadow = true;
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(wall.geometry), edgeMat);   // neon outline
+  wall.add(edges);
+  group.add(wall);
+  if (buildingFloor != null) wallsByFloor[buildingFloor].push([x1, z1, x2, z2]);
+}
+
+BUILDING.floors.forEach((fl, i) => {
+  const g = new THREE.Group();
+  g.position.y = i * FLOOR_GAP;
+  scene.add(g);
+  floorGroups[fl.id] = g;
+  buildingFloor = fl.id; wallsByFloor[fl.id] = [];
+
+  // outside walls + base floor (the hallways are whatever is left over)
+  if (fl.outline) {
+    const o = fl.outline;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(o.w, 0.1, o.d),
+                                new THREE.MeshStandardMaterial({ color: '#0a1624', emissive: '#03202b', emissiveIntensity: 0.8, metalness: 0.4, roughness: 0.5 }));
+    base.position.set(o.w / 2, -0.04, o.d / 2);
+    base.receiveShadow = true;
+    base.userData.floorId = fl.id;
+    floorBases.push(base);
+    g.add(base);
+    const e = o.entrance || {};
+    const edge = (name, x1, z1, x2, z2) => {
+      if (e.side !== name) return addWall(g, x1, z1, x2, z2);
+      if (z1 === z2) { addWall(g, x1, z1, e.from, z1); addWall(g, e.to, z1, x2, z1); }
+      else           { addWall(g, x1, z1, x1, e.from); addWall(g, x1, e.to, x1, z2); }
+    };
+    edge('top', 0, 0, o.w, 0); edge('bottom', 0, o.d, o.w, o.d);
+    edge('left', 0, 0, 0, o.d); edge('right', o.w, 0, o.w, o.d);
+  }
+
+  for (const r of fl.rooms) {
+    roomFloor[r.id] = fl;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(r.w, 0.1, r.d),
+                                 roomMat(r.color));
+    floor.position.set(r.x + r.w / 2, 0, r.z + r.d / 2);
+    floor.receiveShadow = true;
+    g.add(floor);
+
+    const doorW = 1.2, cx = r.x + r.w / 2, cz = r.z + r.d / 2;
+    const left = r.x, right = r.x + r.w, top = r.z, bottom = r.z + r.d;
+    const door = r.door || (r.id.startsWith('hallway') ? 'open' : (r.z < 8 ? 'bottom' : 'top'));
+    const doors = [].concat(door);            // one door ("left") or several (["bottom", "top"])
+    if (!doors.includes('open')) {
+      // each side: solid wall, or wall with a door gap in the middle
+      const side = (name, x1, z1, x2, z2) => {
+        if (!doors.includes(name)) return addWall(g, x1, z1, x2, z2);
+        if (x1 === x2) { addWall(g, x1, z1, x1, cz - doorW / 2); addWall(g, x1, cz + doorW / 2, x1, z2); }
+        else           { addWall(g, x1, z1, cx - doorW / 2, z1); addWall(g, cx + doorW / 2, z1, x2, z1); }
+      };
+      side('top', left, top, right, top);
+      side('bottom', left, bottom, right, bottom);
+      side('left', left, top, left, bottom);
+      side('right', right, top, right, bottom);
+    }
+
+    const div = document.createElement('div');
+    div.className = 'label';
+    div.textContent = r.name;
+    div.style.pointerEvents = 'auto';
+    div.onclick = () => goToRoom(r);
+    const obj = new CSS2DObject(div);
+    obj.position.set(r.x + r.w / 2, WALL_H + 0.8, r.z + r.d / 2);
+    g.add(obj);
+    labels[r.id] = { div, obj };
+  }
+});
+
+// camera icons for the 360 photos
+const camIcons = {};   // photo id -> CSS2DObject
+for (const ph of PHOTOS) {
+  const div = document.createElement('div');
+  div.className = 'cam';
+  div.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+  div.title = 'Look around here';
+  div.style.pointerEvents = 'auto';
+  div.onclick = () => openPhoto(ph.id);
+  const obj = new CSS2DObject(div);
+  obj.position.set(ph.x, 1.2, ph.z);
+  floorGroups[ph.floor].add(obj);
+  camIcons[ph.id] = obj;
+}
+
+// center of one floor (all floors share the same outline)
+const fb = new THREE.Box3().setFromObject(floorGroups[BUILDING.floors[0].id]);
+const center = fb.getCenter(new THREE.Vector3()); center.y = 0;
+const size = fb.getSize(new THREE.Vector3());
+const K = Math.max(1, Math.max(size.x, size.z) / 48);   // pull the camera back for big buildings
+
+// ------------------------------------------------------------------
+// 4. FLOORS: show one floor, or "All" stacked
+// ------------------------------------------------------------------
+let currentFloor = BUILDING.floors[0].id;   // number, or 'all'
+let is2D = false;
+
+const btnBox = document.getElementById('floorBtns');
+const floorBtns = {};
+[...BUILDING.floors.map(f => ({ id: f.id, text: f.id + 'F' })), { id: 'all', text: 'All' }].forEach(f => {
+  const b = document.createElement('button');
+  b.textContent = f.text;
+  b.onclick = () => { showFloor(f.id); resetView(); };
+  btnBox.appendChild(b);
+  floorBtns[f.id] = b;
+});
+
+function showFloor(id) {
+  currentFloor = id;
+  for (const fl of BUILDING.floors) {
+    const vis = id === 'all' || fl.id === id;
+    floorGroups[fl.id].visible = vis;
+    for (const r of fl.rooms) labels[r.id].obj.visible = vis;   // labels need their own switch
+    for (const ph of PHOTOS) if (ph.floor === fl.id) camIcons[ph.id].visible = vis;
+  }
+  if (typeof routeConnector !== 'undefined' && routeConnector) routeConnector.visible = id === 'all';
+  for (const k in floorBtns) floorBtns[k].classList.toggle('on', String(k) === String(id));
+}
+
+function floorY(id) {
+  const i = BUILDING.floors.findIndex(f => f.id === id);
+  return i < 0 ? 0 : i * FLOOR_GAP;
+}
+
+// ------------------------------------------------------------------
+// 5. CAMERA: 2D / 3D views + smooth fly-to
+// ------------------------------------------------------------------
+let anim = null;
+function flyTo(pos, target, ms = 1200) {
+  anim = { t0: performance.now(), ms,
+    p0: camera.position.clone(), p1: pos.clone(),
+    q0: controls.target.clone(), q1: target.clone() };
+}
+function resetView() {
+  const y = currentFloor === 'all' ? FLOOR_GAP / 2 : floorY(currentFloor);
+  const t = new THREE.Vector3(center.x, y, center.z);
+  if (is2D) flyTo(new THREE.Vector3(t.x, y + 60 * K, t.z + 0.01), t);
+  else flyTo(new THREE.Vector3(t.x - 18 * K, y + 40 * K, t.z + 40 * K), t);
+}
+
+document.getElementById('b2d').onclick = () => { is2D = true;  setOn('b2d'); resetView(); };
+document.getElementById('b3d').onclick = () => { is2D = false; setOn('b3d'); resetView(); };
+function setOn(id) {
+  for (const b of ['b2d', 'b3d']) document.getElementById(b).classList.toggle('on', b === id);
+}
+
+function goToRoom(r, message, opts = {}) {
+  stopWalk();
+  const fl = roomFloor[r.id];
+  if (currentFloor !== 'all' && currentFloor !== fl.id) showFloor(fl.id);   // switch floor automatically
+  Object.values(labels).forEach(l => l.div.classList.remove('hit'));
+  labels[r.id].div.classList.add('hit');
+  const y = floorY(fl.id);
+  const t = new THREE.Vector3(r.x + r.w / 2, y, r.z + r.d / 2);
+  flyTo(new THREE.Vector3(t.x - 4, y + 12, t.z + 12), t);
+  const ph = PHOTOS.find(p => p.floor === fl.id && roomOf(p)?.id === r.id);
+  const base = message || `${r.name} is on the ${fl.name}.`;
+  const route = me ? routeTo(r) : null;
+  const cls = roomStatus(r.id);
+  const clsText = cls ? ' ' + cls.text : '';
+  if (route) {
+    frameRoute(route);
+    showAnswer(`${route.lead} ${base} ${route.directions}${clsText}`, ph);
+    if (opts.walk !== false && routeLegs.length) walkTimer = setTimeout(() => startWalk(r), 1400);   // let people see the dots first
+  } else {
+    showAnswer(base + clsText + (me ? '' : ' Drag the mascot to where you are to get a route.'), ph);
+  }
+  lastQuery = '';
+}
+
+// ------------------------------------------------------------------
+// 5b. 360 PHOTOS: open, auto arrows, minimap
+// ------------------------------------------------------------------
+const FACING = { top: 0, right: 90, bottom: 180, left: 270 };
+const photoById = Object.fromEntries(PHOTOS.map(p => [p.id, p]));
+
+function roomOf(ph) {   // which room is this photo standing in?
+  const fl = BUILDING.floors.find(f => f.id === ph.floor);
+  return fl.rooms.find(r => ph.x >= r.x && ph.x <= r.x + r.w && ph.z >= r.z && ph.z <= r.z + r.d);
+}
+// How far you turned. Not set? Guess it from the picture's shape
+// (a phone panorama is about 65 degrees tall, so a 4.5x wider picture = about 290 degrees).
+const sweep = ph => {
+  if (PHOTO_MODE !== 'panorama') return 360;
+  if (ph.sweep) return ph.sweep;
+  const sz = photoSize[ph.id];
+  return sz ? Math.min(360, Math.round(65 * sz.w / sz.h)) : 360;
+};
+// A phone panorama STARTS at its left edge, so the middle of the picture is half a turn later.
+const north = ph => (FACING[ph.facing] || 0) + (PHOTO_MODE === 'panorama' ? sweep(ph) / 2 : 0) + (ph.yawFix || 0);
+
+// panorama strips: work out how tall the view is from the picture's size
+const photoSize = {};
+function loadSizes() {
+  return Promise.all(PHOTOS.map(p => photoSize[p.id] ? null : new Promise(res => {
+    const img = new Image();
+    img.onload = () => { photoSize[p.id] = { w: img.naturalWidth, h: img.naturalHeight }; res(); };
+    img.onerror = () => { photoSize[p.id] = { w: 4, h: 1 }; res(); };
+    img.src = p.file;
+  })));
+}
+const wrap = a => ((a + 540) % 360) - 180;
+
+// direction from photo a to photo b, as a Pannellum yaw (0 = center of a's photo, + = right)
+function yawTo(a, b) {
+  const bearing = Math.atan2(b.x - a.x, -(b.z - a.z)) * 180 / Math.PI;   // 0 = top of paper, 90 = right
+  return wrap(bearing - north(a));
+}
+
+function neighbours(a) {
+  const ra = roomOf(a);
+  const auto = PHOTOS.filter(b => {
+    if (b.id === a.id || b.floor !== a.floor) return false;
+    if (Math.hypot(b.x - a.x, b.z - a.z) > MAX_LINK) return false;
+    const rb = roomOf(b);
+    const inHall = r => !r || r.id.startsWith('hallway') || r.door === 'open';
+    return (ra && rb && ra.id === rb.id) || inHall(ra) || inHall(rb);
+  });
+  const manual = (a.links || []).map(id => photoById[id]).filter(Boolean);
+  return [...new Set([...auto, ...manual])];
+}
+
+function placeName(ph) {
+  const fl = BUILDING.floors.find(f => f.id === ph.floor);
+  const r = roomOf(ph);
+  return `${fl.name} - ${r ? r.name : 'Hallway'}`;
+}
+
+function buildTour(firstId) {
+  const scenes = {};
+  for (const a of PHOTOS) {
+    scenes[a.id] = {
+      type: 'equirectangular',
+      panorama: a.file,
+      northOffset: north(a),
+      ...(PHOTO_MODE === 'panorama' ? (() => {
+        const sz = photoSize[a.id] || { w: 4, h: 1 };
+        const haov = sweep(a);
+        const vaov = Math.min(150, haov * sz.h / sz.w);      // height of the strip in degrees
+        return { haov, vaov, vOffset: 0, minPitch: -vaov / 2, maxPitch: vaov / 2,
+                 hfov: Math.min(100, vaov * 1.2), maxHfov: Math.min(120, vaov * 1.4) };
+      })() : {}),
+      hotSpots: neighbours(a).map(b => ({
+        type: 'scene',
+        sceneId: b.id,
+        pitch: -12,
+        yaw: yawTo(a, b),
+        targetYaw: 'sameAzimuth',          // keep facing the way you were walking
+        text: b.floor !== a.floor ? `Go to ${BUILDING.floors.find(f => f.id === b.floor).name}`
+                                  : (roomOf(b)?.name || 'Go'),
+      })),
+    };
+  }
+  return { default: { firstScene: firstId, sceneFadeDuration: 800, autoLoad: true, compass: false }, scenes };
+}
+
+let viewer = null;
+const panoWrap = document.getElementById('pano-wrap');
+
+function openPhoto(id) {
+  const ph = photoById[id];
+  if (currentFloor !== 'all' && currentFloor !== ph.floor) showFloor(ph.floor);
+  const y = floorY(ph.floor);
+  // zoom the 3D camera down to the spot, then fade into the photo
+  flyTo(new THREE.Vector3(ph.x, y + 3, ph.z + 3), new THREE.Vector3(ph.x, y + 1, ph.z), 800);
+  Promise.all([loadSizes(), new Promise(r => setTimeout(r, 800))]).then(() => {
+    if (viewer) viewer.destroy();
+    viewer = pannellum.viewer('pano', buildTour(id));
+    viewer.on('scenechange', sid => updateWhere(sid));
+    updateWhere(id);
+    panoWrap.classList.add('open');
+  });
+}
+
+function closePhoto() {
+  panoWrap.classList.remove('open');
+  if (viewer) {
+    const ph = photoById[viewer.getScene()];
+    if (ph) {   // come back out above where you were standing
+      if (currentFloor !== 'all' && currentFloor !== ph.floor) showFloor(ph.floor);
+      const y = floorY(ph.floor);
+      flyTo(new THREE.Vector3(ph.x - 4, y + 12, ph.z + 12), new THREE.Vector3(ph.x, y, ph.z));
+    }
+  }
+}
+document.getElementById('pano-close').onclick = closePhoto;
+addEventListener('keydown', e => { if (e.key === 'Escape') closePhoto(); });
+
+// little floor map with a "you are here" dot (like Street View)
+function updateWhere(id) {
+  const ph = photoById[id];
+  document.getElementById('pano-where').textContent = placeName(ph);
+  const fl = BUILDING.floors.find(f => f.id === ph.floor);
+  const cv = document.getElementById('minimap'), ctx = cv.getContext('2d');
+  const maxX = Math.max(...fl.rooms.map(r => r.x + r.w)), maxZ = Math.max(...fl.rooms.map(r => r.z + r.d));
+  const s = Math.min((cv.width - 10) / maxX, (cv.height - 10) / maxZ);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  for (const r of fl.rooms) {
+    ctx.fillStyle = r.color + '55'; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1;
+    ctx.fillRect(5 + r.x * s, 5 + r.z * s, r.w * s, r.d * s);
+    ctx.strokeRect(5 + r.x * s, 5 + r.z * s, r.w * s, r.d * s);
+  }
+  for (const p of PHOTOS.filter(p => p.floor === ph.floor)) {
+    ctx.beginPath(); ctx.arc(5 + p.x * s, 5 + p.z * s, p.id === id ? 6 : 3, 0, 7);
+    ctx.fillStyle = p.id === id ? '#ff2bd6' : '#7fdfff'; ctx.fill();
+  }
+}
+
+// ------------------------------------------------------------------
+// 6. SEARCH
+//    Step A (works now, no AI): simple keyword match.
+//    Step B (DGX): set USE_AI = true and run server.py with Ollama.
+// ------------------------------------------------------------------
+const USE_AI = true;
+const AI_URL = 'http://localhost:8000/ask';
+const ALL_ROOMS = BUILDING.floors.flatMap(f => f.rooms.map(r => ({ ...r, floor: f.name })));
+
+// ---------- class schedule: what is on now / next ----------
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const nowTime = () => { const t = new URLSearchParams(location.search).get('time'); return t ? new Date(t) : new Date(); };   // ?time= for testing
+const toMin = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const clock = min => { let h = Math.floor(min / 60); const m = min % 60, ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}`; };
+const label = c => c.course + (c.section ? `, Sec ${c.section}` : '');
+const howLong = min => min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
+function roomStatus(roomId, now = nowTime()) {
+  const all = SCHEDULE.filter(c => c.room === roomId);
+  if (!all.length) return null;
+  const today = DAYS[now.getDay()], mins = now.getHours() * 60 + now.getMinutes();
+  const list = all.filter(c => c.days.includes(today)).sort((a, b) => toMin(a.start) - toMin(b.start));
+  const cur = list.find(c => toMin(c.start) <= mins && mins < toMin(c.end));
+  if (cur) return { state: 'now', text: `Right now: ${label(cur)}, until ${clock(toMin(cur.end))}.` };
+  const next = list.find(c => toMin(c.start) > mins);
+  if (next) {
+    const inMin = toMin(next.start) - mins;
+    return { state: inMin <= 120 ? 'soon' : 'later', inMin, text: `Next class: ${label(next)} at ${clock(toMin(next.start))}, in ${howLong(inMin)}.` };
+  }
+  return { state: 'none', text: 'No more classes here today.' };
+}
+function updateClassTags() {                    // "NOW" or "in 25 min" on room labels
+  for (const [id, l] of Object.entries(labels)) {
+    const st = roomStatus(id);
+    let tag = l.div.querySelector('.cls');
+    if (!st || st.state === 'none' || st.state === 'later') { if (tag) tag.remove(); continue; }
+    if (!tag) { tag = document.createElement('span'); l.div.appendChild(tag); }
+    tag.className = 'cls ' + st.state;
+    tag.textContent = st.state === 'now' ? 'NOW' : 'in ' + howLong(st.inMin);
+  }
+}
+// ---------- classes panel (bell button) ----------
+const panel = document.getElementById('classes');
+document.getElementById('bclasses').onclick = () => { document.getElementById('chat').classList.remove('open'); panel.classList.toggle('open'); renderClassPanel(); };
+function roomById(id) { return ALL_ROOMS.find(r => r.id === id); }
+function classState(c, now = nowTime()) {
+  const today = DAYS[now.getDay()], mins = now.getHours() * 60 + now.getMinutes();
+  if (!c.days.includes(today)) return { group: 'other' };
+  if (toMin(c.start) <= mins && mins < toMin(c.end)) return { group: 'now', tag: 'NOW' };
+  if (toMin(c.start) > mins) {
+    const inMin = toMin(c.start) - mins;
+    return inMin <= 120 ? { group: 'soon', tag: 'in ' + howLong(inMin) } : { group: 'later' };
+  }
+  return { group: 'done' };
+}
+function renderClassPanel() {
+  const groups = { now: [], soon: [], later: [], done: [], other: [] };
+  for (const c of SCHEDULE) {
+    const st = classState(c);
+    if (groups[st.group]) groups[st.group].push({ c, st });
+  }
+  for (const g of Object.values(groups)) g.sort((a, b) => toMin(a.c.start) - toMin(b.c.start));
+  const n = groups.now.length + groups.soon.length;
+  const badge = document.getElementById('cbadge');
+  badge.textContent = n; badge.style.display = n ? 'inline-block' : 'none';
+  if (!panel.classList.contains('open')) return;
+  const titles = { now: 'NOW', soon: 'STARTING SOON', later: 'LATER TODAY', done: 'FINISHED TODAY', other: 'OTHER DAYS' };
+  panel.innerHTML = '';
+  for (const key of ['now', 'soon', 'later', 'done', 'other']) {
+    const h = document.createElement('h3'); h.textContent = titles[key]; panel.appendChild(h);
+    if (!groups[key].length && key === 'done') { h.remove(); continue; }
+    if (!groups[key].length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No classes'; panel.appendChild(e); continue; }
+    for (const { c, st } of groups[key]) {
+      const r = roomById(c.room);
+      const item = document.createElement('div');
+      item.className = 'citem ' + key;
+      item.innerHTML = `<span class="s ${key}"></span><div class="t"></div><div class="m"></div>`;
+      item.querySelector('.s').textContent = st.tag || '';
+      if (!st.tag) item.querySelector('.s').remove();
+      item.querySelector('.t').textContent = label(c);
+      item.querySelector('.m').textContent = `${r ? r.name + ', ' + r.floor : c.room} - ${c.days.join('/')} ${clock(toMin(c.start))} - ${clock(toMin(c.end))}`
+                                           + (c.teacher ? ` - ${c.teacher}` : '') + (c.status ? ` - ${c.status}` : '');
+      item.onclick = () => {
+        if (!r) return;
+        if (innerWidth < 700) panel.classList.remove('open');
+        lastQuery = '';
+        goToRoom(r);                        // dots, mascot walk, directions, class info
+      };
+      panel.appendChild(item);
+    }
+  }
+}
+updateClassTags();
+renderClassPanel();
+setInterval(() => { updateClassTags(); renderClassPanel(); }, 30000);
+const classesOf = id => SCHEDULE.filter(c => c.room === id).map(c => `${label(c)}, ${c.teacher} (${c.days.join('/')} ${c.start}-${c.end})`);
+
+function keywordSearch(q) {
+  q = q.toLowerCase();
+  // a class name or code, like "cs 500" or "where is cs500?"
+  const flat = q.replace(/\s+/g, '');
+  const cls = SCHEDULE.find(c => flat.includes(c.course.split(' - ')[0].toLowerCase().replace(/\s+/g, '')));
+  if (cls) return ALL_ROOMS.find(r => r.id === cls.room) || null;
+  // a teacher's name: pick their class that is on now or next today, else their first one
+  const byTeacher = SCHEDULE.filter(c => c.teacher && c.teacher.toLowerCase().split(' ').some(w => w.length > 3 && q.includes(w)));
+  if (byTeacher.length) {
+    const st = byTeacher.map(c => ({ c, s: classState(c) }));
+    const pick = (st.find(x => x.s.group === 'now') || st.find(x => x.s.group === 'soon') || st.find(x => x.s.group === 'later') || st[0]).c;
+    return ALL_ROOMS.find(r => r.id === pick.room) || null;
+  }
+  // prefer a match on the floor you are looking at
+  const hits = ALL_ROOMS.filter(r => r.name.toLowerCase().includes(q) || r.keywords.some(k => q.includes(k)));
+  return hits.find(r => roomFloor[r.id].id === currentFloor) || hits[0] || null;
+}
+
+let lastQuery = '';
+async function search() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  lastQuery = q;
+  if (USE_AI) {
+    try {
+      const res = await fetch(AI_URL, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q,
+          now: nowTime().toLocaleString('en-US', { weekday: 'long', hour: 'numeric', minute: '2-digit' }),
+          rooms: ALL_ROOMS.map(({ id, name, floor, keywords }) => ({ id, name, floor, keywords, classes: classesOf(id) })) }) });
+      const { go_to, answer } = await res.json();
+      const r = ALL_ROOMS.find(x => x.id === go_to);
+      if (r) return goToRoom(r, answer);
+      return showAnswer(answer || "Sorry, I couldn't find that.");
+    } catch (e) { console.warn('AI not reachable, using keywords', e); }
+  }
+  const r = keywordSearch(q);
+  r ? goToRoom(r) : showAnswer("Sorry, I couldn't find that place.");
+}
+document.getElementById('go').onclick = search;
+document.getElementById('q').onkeydown = e => { if (e.key === 'Enter') search(); };
+
+// ------------------------------------------------------------------
+// CHAT: the Unofficial Guide (documents -> grounded answer + sources).
+// Runs on the same DGX server as search: POST /chat
+// ------------------------------------------------------------------
+const CHAT_URL = AI_URL.replace('/ask', '/chat');
+const chatPanel = document.getElementById('chat'), chatLog = document.getElementById('chatlog'), chatQ = document.getElementById('chatq');
+function addMsg(who, text) {
+  const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text;
+  chatLog.appendChild(d); chatLog.scrollTop = chatLog.scrollHeight; return d;
+}
+document.getElementById('bchat').onclick = () => {
+  panel.classList.remove('open');
+  chatPanel.classList.toggle('open');
+  if (chatPanel.classList.contains('open') && !chatLog.children.length)
+    addMsg('bot', 'Hi! Ask me anything about SFBU: housing, transport, deadlines, wellness, career help. For finding a room, use the search bar.');
+  if (chatPanel.classList.contains('open')) chatQ.focus();
+};
+async function sendChat() {
+  const q = chatQ.value.trim();
+  if (!q) return;
+  chatQ.value = '';
+  addMsg('user', q);
+  if (!USE_AI) return addMsg('bot', 'Chat needs the DGX. Start the AI server and set USE_AI = true.');
+  const wait = addMsg('bot', 'Thinking...');
+  try {
+    const res = await fetch(CHAT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }) });
+    const { answer, sources } = await res.json();
+    wait.textContent = answer;
+    if (sources && sources.length) {
+      const s = document.createElement('div'); s.className = 'src'; s.textContent = 'Sources: ' + sources.join(', ');
+      wait.appendChild(s);
+    }
+    // if the answer names a room on the map, offer to show it
+    const low = answer.toLowerCase();
+    const room = ALL_ROOMS.find(r => low.includes(r.name.toLowerCase()));
+    if (room) {
+      const b = document.createElement('button'); b.textContent = 'Show on map: ' + room.name;
+      b.onclick = () => { if (innerWidth < 700) chatPanel.classList.remove('open'); lastQuery = ''; goToRoom(room); };
+      wait.appendChild(b);
+    }
+  } catch (e) { wait.textContent = "Can't reach the guide. Is server.py running on the DGX?"; }
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+document.getElementById('chatsend').onclick = sendChat;
+chatQ.onkeydown = e => { if (e.key === 'Enter') sendChat(); };
+
+function showAnswer(text, photo) {
+  const a = document.getElementById('answer');
+  a.textContent = text; a.style.display = 'block';
+  if (photo) {   // this room has a 360 photo -> offer to look inside
+    const b = document.createElement('button');
+    b.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Look inside</span>';
+    b.onclick = () => openPhoto(photo.id);
+    a.appendChild(b);
+  }
+}
+
+// ------------------------------------------------------------------
+// WHERE AM I?  photo -> DGX image AI (server.py /whereami) -> "YOU ARE HERE"
+// ------------------------------------------------------------------
+const WHERE_URL = AI_URL.replace('/ask', '/whereami');
+const fileIn = document.getElementById('whereFile');
+document.getElementById('where').onclick = () => fileIn.click();
+fetch(WHERE_URL + '/ready').catch(() => {});   // warm up the image AI in the background
+
+fileIn.onchange = () => {
+  const f = fileIn.files[0];
+  if (!f) return;
+  showAnswer('Looking at your photo on the DGX...');
+  const rd = new FileReader();
+  rd.onload = async () => {
+    const img = new Image(); img.src = rd.result; await img.decode();
+    const k = Math.min(1, 800 / Math.max(img.width, img.height));      // shrink big phone photos
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    try {
+      const t0 = performance.now();
+      const res = await fetch(WHERE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify({ image: c.toDataURL('image/jpeg', 0.85) }) });
+      const r = await res.json();
+      const ms = Math.round(performance.now() - t0);
+      const ph = photoById[r.photo_id];
+      if (!ph || r.score < 0.4) {
+        showAnswer(`Hmm, not sure where that is (best match ${Math.round(r.score * 100)}%). Try a photo showing more of the room.`);
+      } else {
+        await loadSizes();
+        showYouAreHere(ph, r.view);
+        showAnswer(`You are here: ${placeName(ph)} - match ${Math.round(r.score * 100)}% - ${String(r.device).toUpperCase()} ${ms} ms`, ph);
+        speak(`You are here: ${placeName(ph).replace('-', ',')}`);
+      }
+    } catch (e) {
+      showAnswer('Can\'t reach the image AI. Is server.py running on the DGX?');
+    }
+    fileIn.value = '';
+  };
+  rd.readAsDataURL(f);
+};
+
+function facingFromView(ph, view) {
+  if (view == null) return null;
+  return (FACING[ph.facing] || 0) + view * sweep(ph) + (ph.yawFix || 0) - (PHOTO_MODE === 'panorama' ? 0 : 180);
+}
+
+function showYouAreHere(ph, view) {
+  placeMe(ph.floor, ph.x, ph.z, facingFromView(ph, view));
+  if (currentFloor !== 'all' && currentFloor !== ph.floor) showFloor(ph.floor);
+  if (routeTarget) goToRoom(routeTarget, null, { walk: false });   // already heading somewhere? re-route from the new spot
+  else {
+    const y = floorY(ph.floor);
+    flyTo(new THREE.Vector3(ph.x - 4, y + 14, ph.z + 14), new THREE.Vector3(ph.x, y, ph.z));
+  }
+}
+
+// ------------------------------------------------------------------
+// VOICE: mic button -> Whisper on the DGX -> AI search -> answer read out loud
+// ------------------------------------------------------------------
+const ASR_URL = AI_URL.replace('/ask', '/transcribe');
+let rec = null;
+
+function speak(text) {
+  try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch (e) {}
+}
+function answerText() {
+  const a = document.getElementById('answer');
+  return a.childNodes.length ? a.childNodes[0].textContent : '';
+}
+function toBase64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+document.getElementById('mic').onclick = async () => {
+  const btn = document.getElementById('mic');
+  if (!rec) {                                   // ---- start listening
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks = [];
+      proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      src.connect(proc); proc.connect(ctx.destination);
+      rec = { stream, ctx, src, proc, chunks };
+      btn.classList.add('on');
+      showAnswer('Listening... click the mic again when you finish talking');
+    } catch (e) { showAnswer('No microphone found (or permission was blocked).'); }
+    return;
+  }
+  // ---- stop and send to the DGX
+  const r = rec; rec = null; btn.classList.remove('on');
+  r.src.disconnect(); r.proc.disconnect(); r.stream.getTracks().forEach(t => t.stop());
+  const total = r.chunks.reduce((n, c) => n + c.length, 0);
+  const all = new Float32Array(total); let o = 0;
+  for (const c of r.chunks) { all.set(c, o); o += c.length; }
+  const rate = r.ctx.sampleRate; await r.ctx.close();
+  showAnswer('Understanding you on the DGX...');
+  try {
+    const t0 = performance.now();
+    const res = await fetch(ASR_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                       body: JSON.stringify({ audio: toBase64(new Uint8Array(all.buffer)), rate }) });
+    const { text } = await res.json();
+    console.log('whisper', Math.round(performance.now() - t0), 'ms:', text);
+    if (!text) return showAnswer("I didn't hear anything. Try again a bit closer to the mic.");
+    document.getElementById('q').value = text;
+    await search();
+    speak(answerText());
+  } catch (e) { showAnswer("Can't reach the voice AI. Is server.py running on the DGX?"); }
+};
+
+// ==================================================================
+// MASCOT "YOU ARE HERE" + DRAG + ROUTE (A*) + DOTTED PATH + DIRECTIONS
+// ==================================================================
+const MASCOT_SIZE = 0.07;                   // mascot height on screen (part of screen height)
+const WALK_SPEED = 1.3;                     // meters per second
+const CELL = 0.5;                           // route grid size in meters
+let me = null;                              // { floor, x, z, bearing }
+let routeTarget = null;                     // room we are routing to
+let routeDots = [];                         // dotted path meshes (one per floor)
+let routeConnector = null;                  // dotted line between floors ("All" view)
+let routeLegs = [];                         // [{ floor, pts }] the path the mascot can walk
+let walking = null;                         // walk animation state
+let walkTimer = null;                       // pending walk start
+
+// ---------- the mascot ----------
+const mascot = new THREE.Group();
+{
+  const tex = new THREE.TextureLoader().load('assets/images/mascot.png');
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // sizeAttenuation: false = same size on screen at any zoom (like a map pin)
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false,
+                                                            depthTest: false, sizeAttenuation: false }));
+  sprite.center.set(0.5, 0);                // feet on the floor
+  sprite.scale.set(MASCOT_SIZE * 360 / 310, MASCOT_SIZE, 1);
+  sprite.position.y = 0.15;
+  sprite.renderOrder = 10;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.2, 48),
+    new THREE.MeshBasicMaterial({ color: 0xff2bd6, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.2;
+  // facing cone (only shown when "Where am I?" knows your direction)
+  const R = 4.5, half = 35 * Math.PI / 180, n = 16, verts = [0, 0, 0], idx = [];
+  for (let i = 0; i <= n; i++) { const a = -half + 2 * half * i / n; verts.push(Math.sin(a) * R, 0, -Math.cos(a) * R); }
+  for (let i = 1; i <= n; i++) idx.push(0, i + 1, i);
+  const fan = new THREE.BufferGeometry();
+  fan.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); fan.setIndex(idx);
+  const cone = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: 0xff2bd6, transparent: true, opacity: 0.3,
+                                                                 side: THREE.DoubleSide, depthWrite: false }));
+  cone.position.y = 0.18; cone.visible = false;
+  mascot.add(cone, ring, sprite);
+  mascot.userData = { sprite, ring, cone };
+}
+
+function placeMe(floor, x, z, bearing = null) {
+  me = { floor, x, z, bearing };
+  if (mascot.parent !== floorGroups[floor]) floorGroups[floor].add(mascot);
+  mascot.position.set(x, 0, z);
+  mascot.userData.cone.visible = bearing != null;
+  if (bearing != null) mascot.userData.cone.rotation.y = -bearing * Math.PI / 180;
+}
+
+// start at the main entrance
+function placeAtStart() {
+  const ent = BUILDING.floors[0].rooms.find(r => r.id === 'entrance');
+  if (ent) placeMe(BUILDING.floors[0].id, ent.x + ent.w / 2 - 2, ent.z - 3);   // a few steps inside, past the door
+}
+placeAtStart();
+
+// Reset button: mascot back to the entrance, route cleared, view reset
+document.getElementById('breset').onclick = () => {
+  stopWalk();
+  clearRoute();
+  routeTarget = null;
+  placeAtStart();
+  Object.values(labels).forEach(l => l.div.classList.remove('hit'));
+  document.getElementById('q').value = '';
+  document.getElementById('answer').style.display = 'none';
+  showFloor(BUILDING.floors[0].id);
+  resetView();
+};
+
+// ---------- drag the mascot with the mouse (or a finger) ----------
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let dragging = false;
+function setMouse(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(mouse, camera);
+}
+function hitsMascot(e) {
+  if (!mascot.parent || !mascot.parent.visible) return false;
+  setMouse(e);
+  return raycaster.intersectObject(mascot.userData.sprite).length > 0;
+}
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (!hitsMascot(e)) return;
+  stopWalk();
+  dragging = true; controls.enabled = false;
+  renderer.domElement.setPointerCapture(e.pointerId);
+  renderer.domElement.style.cursor = 'grabbing';
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!dragging) { renderer.domElement.style.cursor = hitsMascot(e) ? 'grab' : ''; return; }
+  const floor = currentFloor === 'all' ? me.floor : currentFloor;   // dragging on another floor moves you there
+  setMouse(e);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY(floor)), hit)) return;
+  const b = floorBounds(floor);
+  placeMe(floor, Math.min(b.maxX, Math.max(b.minX, hit.x)), Math.min(b.maxZ, Math.max(b.minZ, hit.z)));
+});
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!dragging) return;
+  dragging = false; controls.enabled = true;
+  renderer.domElement.style.cursor = '';
+  if (routeTarget) goToRoom(routeTarget, null, { walk: false });   // re-route from the new spot
+});
+
+// double-click anywhere on a floor = move the mascot there (also to another floor)
+renderer.domElement.addEventListener('dblclick', e => {
+  stopWalk();
+  setMouse(e);
+  const hit = raycaster.intersectObjects(floorBases.filter(b => b.parent.visible))[0];
+  if (!hit) return;
+  const floor = hit.object.userData.floorId, bnd = floorBounds(floor);
+  const x = Math.min(bnd.maxX, Math.max(bnd.minX, hit.point.x)), z = Math.min(bnd.maxZ, Math.max(bnd.minZ, hit.point.z));
+  const moved = me && me.floor !== floor;
+  placeMe(floor, x, z);
+  if (routeTarget) goToRoom(routeTarget, null, { walk: false });
+  else if (moved) showAnswer(`You are now on the ${BUILDING.floors.find(f => f.id === floor).name}.`);
+});
+
+// ---------- the mascot walks the route ----------
+function startWalk(room) {
+  if (!routeLegs.length || dragging) return;
+  const lens = routeLegs.map(l => pathLength(l.pts));
+  const total = lens.reduce((a, b) => a + b, 0);
+  if (total < 1) return;
+  anim = null;                                     // stop any camera fly-to
+  walking = { room, leg: 0, d: 0, lens, speed: Math.max(6, total / 8), pause: 0, last: performance.now(),
+              offset: camera.position.clone().sub(controls.target) };
+}
+function stopWalk() { clearTimeout(walkTimer); walking = null; }
+function pointAlong(pts, d) {                       // position + heading at distance d along a path
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, z1] = pts[i - 1], [x2, z2] = pts[i], L = Math.hypot(x2 - x1, z2 - z1);
+    if (d <= L || i === pts.length - 1) {
+      const t = L ? Math.min(1, d / L) : 1;
+      return { x: x1 + (x2 - x1) * t, z: z1 + (z2 - z1) * t, bearing: Math.atan2(x2 - x1, -(z2 - z1)) * 180 / Math.PI };
+    }
+    d -= L;
+  }
+  const [x, z] = pts[pts.length - 1]; return { x, z, bearing: null };
+}
+function updateWalk(now) {
+  const w = walking, dt = Math.min(0.25, (now - w.last) / 1000); w.last = now;   // same speed on slow computers
+  if (w.pause > 0) { w.pause -= dt; return; }       // short stop on the stairs / in the elevator
+  const leg = routeLegs[w.leg];
+  w.d += w.speed * dt;
+  const p = pointAlong(leg.pts, w.d);
+  placeMe(leg.floor, p.x, p.z, p.bearing);
+  // camera follows the mascot
+  const target = new THREE.Vector3(p.x, floorY(leg.floor), p.z);
+  controls.target.lerp(target, 0.12);
+  camera.position.copy(controls.target).add(w.offset);
+  if (w.d < w.lens[w.leg]) return;
+  if (w.leg + 1 < routeLegs.length) {               // reached the stairs: go to the next floor
+    w.leg++; w.d = 0; w.pause = 0.7;
+    const next = routeLegs[w.leg];
+    if (currentFloor !== 'all') showFloor(next.floor);
+    placeMe(next.floor, next.pts[0][0], next.pts[0][1]);
+    return;
+  }
+  // arrived
+  walking = null;
+  clearRoute();
+  routeTarget = null;
+  const ph = PHOTOS.find(q => q.floor === roomFloor[w.room.id].id && roomOf(q)?.id === w.room.id);
+  showAnswer(`You have arrived at ${w.room.name}.`, ph);
+  speak(`You have arrived at ${w.room.name}.`);
+}
+
+// ---------- route finding grid ----------
+const grids = {};
+function floorBounds(id) {
+  const fl = BUILDING.floors.find(f => f.id === id);
+  let minX = 0, minZ = 0, maxX = fl.outline ? fl.outline.w : 0, maxZ = fl.outline ? fl.outline.d : 0;
+  for (const r of fl.rooms) { minX = Math.min(minX, r.x); minZ = Math.min(minZ, r.z); maxX = Math.max(maxX, r.x + r.w); maxZ = Math.max(maxZ, r.z + r.d); }
+  return { minX, minZ, maxX, maxZ };
+}
+function getGrid(id) {
+  if (grids[id]) return grids[id];
+  const fl = BUILDING.floors.find(f => f.id === id), b = floorBounds(id);
+  const W = Math.ceil((b.maxX - b.minX) / CELL) + 1, H = Math.ceil((b.maxZ - b.minZ) / CELL) + 1;
+  const blocked = new Uint8Array(W * H);
+  const cx = i => b.minX + i * CELL, cz = j => b.minZ + j * CELL;
+  // outside the building (and not inside a room that sticks out) = blocked
+  const o = fl.outline;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const x = cx(i), z = cz(j);
+    const inOutline = o && x >= 0 && x <= o.w && z >= 0 && z <= o.d;
+    const inRoom = fl.rooms.some(r => x >= r.x && x <= r.x + r.w && z >= r.z && z <= r.z + r.d);
+    if (!inOutline && !inRoom) blocked[j * W + i] = 1;
+  }
+  // walls = blocked (door gaps stay open)
+  const pad = WALL_T / 2 + 0.15;
+  for (const [x1, z1, x2, z2] of wallsByFloor[id] || []) {
+    const i0 = Math.max(0, Math.floor((Math.min(x1, x2) - pad - b.minX) / CELL)), i1 = Math.min(W - 1, Math.ceil((Math.max(x1, x2) + pad - b.minX) / CELL));
+    const j0 = Math.max(0, Math.floor((Math.min(z1, z2) - pad - b.minZ) / CELL)), j1 = Math.min(H - 1, Math.ceil((Math.max(z1, z2) + pad - b.minZ) / CELL));
+    const dx = x2 - x1, dz = z2 - z1, L2 = dx * dx + dz * dz || 1;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = cx(i), pz = cz(j);
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / L2));
+      if (Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz)) < pad) blocked[j * W + i] = 1;
+    }
+  }
+  return (grids[id] = { W, H, blocked, b,
+    toCell: (x, z) => [Math.round((x - b.minX) / CELL), Math.round((z - b.minZ) / CELL)],
+    toXZ: (i, j) => [cx(i), cz(j)] });
+}
+function nearestFree(g, i, j) {               // if you stand on a wall, step to the closest free square
+  for (let r = 0; r < 20; r++)
+    for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+      const a = i + di, c = j + dj;
+      if (a >= 0 && c >= 0 && a < g.W && c < g.H && !g.blocked[c * g.W + a]) return [a, c];
+    }
+  return [i, j];
+}
+
+// A* on the grid (8 directions, no cutting corners)
+function aStar(floor, sx, sz, tx, tz) {
+  const g = getGrid(floor), { W, H, blocked } = g;
+  const [si, sj] = nearestFree(g, ...g.toCell(sx, sz)), [ti, tj] = nearestFree(g, ...g.toCell(tx, tz));
+  const start = sj * W + si, goal = tj * W + ti;
+  const gScore = new Float32Array(W * H).fill(Infinity), came = new Int32Array(W * H).fill(-1), closed = new Uint8Array(W * H);
+  const heap = [];                                   // simple binary heap of [f, cell]
+  const push = (f, c) => { heap.push([f, c]); let k = heap.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+  const h = c => { const dx = Math.abs(c % W - ti), dz = Math.abs(((c / W) | 0) - tj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+  gScore[start] = 0; push(h(start), start);
+  const dirs = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+  while (heap.length) {
+    const [, c] = pop();
+    if (c === goal) break;
+    if (closed[c]) continue; closed[c] = 1;
+    const ci = c % W, cj = (c / W) | 0;
+    for (const [di, dj, cost] of dirs) {
+      const ni = ci + di, nj = cj + dj;
+      if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+      const n = nj * W + ni;
+      if (blocked[n]) continue;
+      if (di && dj && (blocked[cj * W + ni] || blocked[nj * W + ci])) continue;
+      const ng = gScore[c] + cost;
+      if (ng < gScore[n]) { gScore[n] = ng; came[n] = c; push(ng + h(n), n); }
+    }
+  }
+  if (start !== goal && came[goal] < 0) return null;   // no way through
+  const cells = []; for (let c = goal; c >= 0; c = c === start ? -1 : came[c]) cells.push(c);
+  cells.reverse();
+  return smoothPath(g, cells.map(c => g.toXZ(c % W, (c / W) | 0)));
+}
+function clearLine(g, a, b) {                  // can you walk straight from a to b?
+  const steps = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (CELL / 2));
+  for (let k = 0; k <= steps; k++) {
+    const x = a[0] + (b[0] - a[0]) * k / steps, z = a[1] + (b[1] - a[1]) * k / steps;
+    const [i, j] = g.toCell(x, z);
+    if (g.blocked[j * g.W + i]) return false;
+  }
+  return true;
+}
+function smoothPath(g, pts) {                  // remove zig-zags
+  if (pts.length < 3) return pts;
+  const out = [pts[0]]; let k = 0;
+  while (k < pts.length - 1) {
+    let far = k + 1;
+    for (let m = pts.length - 1; m > k + 1; m--) if (clearLine(g, pts[k], pts[m])) { far = m; break; }
+    out.push(pts[far]); k = far;
+  }
+  return out;
+}
+const pathLength = pts => pts.reduce((L, p, i) => i ? L + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0, 0);
+
+// ---------- dotted path drawing ----------
+function clearRoute() {
+  for (const d of routeDots) d.parent && d.parent.remove(d);
+  routeDots = [];
+  if (routeConnector) { scene.remove(routeConnector); routeConnector = null; }
+}
+function dotsAlong(pts, spacing = 0.9) {
+  const out = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, z1] = pts[i - 1], [x2, z2] = pts[i], L = Math.hypot(x2 - x1, z2 - z1);
+    for (let d = i === 1 ? 0 : spacing - (out.carry || 0); d < L; d += spacing) out.push([x1 + (x2 - x1) * d / L, z1 + (z2 - z1) * d / L]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+const dotGeo = new THREE.SphereGeometry(0.22, 10, 8);
+const dotMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+function drawDots(floor, pts) {
+  const dots = dotsAlong(pts);
+  const mesh = new THREE.InstancedMesh(dotGeo, dotMat, dots.length);
+  mesh.userData.dots = dots;
+  floorGroups[floor].add(mesh);
+  routeDots.push(mesh);
+}
+function drawConnector(fromFloor, a, toFloor, b) {   // dotted line between floors, shown in "All" view
+  const p1 = new THREE.Vector3(a[0], floorY(fromFloor) + 0.3, a[1]), p2 = new THREE.Vector3(b[0], floorY(toFloor) + 0.3, b[1]);
+  const n = Math.max(4, Math.round(p1.distanceTo(p2) / 0.9));
+  routeConnector = new THREE.InstancedMesh(dotGeo, dotMat, n + 1);
+  const m = new THREE.Matrix4();
+  for (let k = 0; k <= n; k++) routeConnector.setMatrixAt(k, m.makeTranslation(p1.clone().lerp(p2, k / n)));
+  routeConnector.visible = currentFloor === 'all';
+  scene.add(routeConnector);
+}
+function animateDots(now) {                   // dots pulse and "flow" toward the room
+  const m = new THREE.Matrix4();
+  for (const mesh of routeDots) {
+    mesh.userData.dots.forEach(([x, z], k) => {
+      const s = 0.55 + 0.6 * Math.max(0, Math.sin(now / 160 - k * 0.55));
+      m.makeScale(s, s, s).setPosition(x, 0.3, z);
+      mesh.setMatrixAt(k, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+// ---------- plan the route + build the directions ----------
+const roomCenter = r => [r.x + r.w / 2, r.z + r.d / 2];
+const inRect = (r, [x, z]) => x >= r.x && x <= r.x + r.w && z >= r.z && z <= r.z + r.d;
+function connectorRoom(floor, kind, near) {
+  const fl = BUILDING.floors.find(f => f.id === floor);
+  const list = fl.rooms.filter(r => r.id.startsWith(kind));
+  return list.sort((a, b) => Math.hypot(...roomCenter(a).map((v, i) => v - near[i])) - Math.hypot(...roomCenter(b).map((v, i) => v - near[i])))[0];
+}
+function sideWord(pts, room) {                // "on your left / right / straight ahead"
+  // compare the hallway direction (before the last turn) with the turn into the room
+  const k = pts.findIndex(p => inRect(room, p));
+  if (k < 2) return 'straight ahead';
+  const A = pts[k - 2], B = pts[k - 1], C = roomCenter(room);
+  const w = [B[0] - A[0], B[1] - A[1]], v = [C[0] - B[0], C[1] - B[1]];
+  const lw = Math.hypot(...w) || 1, lv = Math.hypot(...v) || 1;
+  if ((w[0] * v[0] + w[1] * v[1]) / (lw * lv) > 0.87) return 'straight ahead';
+  return (w[0] * v[1] - w[1] * v[0]) > 0 ? 'on your right' : 'on your left';
+}
+function routeTo(room) {
+  clearRoute();
+  routeLegs = [];
+  routeTarget = room;
+  const toFloor = roomFloor[room.id].id;
+  const goal = roomCenter(room);
+  let lead = 'Follow the dots.', total = 0, lastLeg;
+  if (inRect(room, [me.x, me.z]) && me.floor === toFloor) {
+    return { lead: '', directions: `You are already in ${room.name}.`, floors: [toFloor], from: [me.x, me.z], to: goal };
+  }
+  if (me.floor === toFloor) {
+    const p = aStar(toFloor, me.x, me.z, ...goal);
+    if (!p) return { lead: '', directions: 'I could not find a walking path there.', floors: [toFloor], from: [me.x, me.z], to: goal };
+    drawDots(toFloor, p); total = pathLength(p); lastLeg = p;
+    routeLegs = [{ floor: toFloor, pts: p }];
+  } else {
+    const needsLift = /wheel ?chair|elevator|lift|accessib|crutch|stroller/i.test(lastQuery);
+    const kind = needsLift ? 'elevator' : 'stairs';
+    const c1 = connectorRoom(me.floor, kind, [me.x, me.z]), c2 = connectorRoom(toFloor, kind, goal);
+    if (!c1 || !c2) return null;
+    const p1 = aStar(me.floor, me.x, me.z, ...roomCenter(c1)), p2 = aStar(toFloor, ...roomCenter(c2), ...goal);
+    if (!p1 || !p2) return { lead: '', directions: 'I could not find a walking path there.', floors: [me.floor, toFloor], from: [me.x, me.z], to: goal };
+    drawDots(me.floor, p1); drawDots(toFloor, p2);
+    routeLegs = [{ floor: me.floor, pts: p1 }, { floor: toFloor, pts: p2 }];
+    drawConnector(me.floor, roomCenter(c1), toFloor, roomCenter(c2));
+    total = pathLength(p1) + pathLength(p2) + 6; lastLeg = p2;
+    var legStart = roomCenter(c2);              // on the target floor the dots start at the stairs / elevator
+    const flName = BUILDING.floors.find(f => f.id === toFloor).name;
+    lead = `Take the ${kind === 'elevator' ? 'elevator' : 'stairs'} to the ${flName}, then follow the dots.`;
+  }
+  const side = sideWord(lastLeg, room);
+  const meters = Math.round(total), secs = Math.max(5, Math.round(total / WALK_SPEED / 5) * 5);
+  const directions = `${side ? `It will be ${side}, ` : 'It is '}about ${meters} m, ${secs < 60 ? secs + ' seconds' : Math.round(secs / 60) + ' min'} walk.`;
+  return { lead, directions: directions.charAt(0).toUpperCase() + directions.slice(1), floors: [me.floor, toFloor],
+           from: legStart || [me.x, me.z], to: goal };
+}
+function frameRoute(route) {                  // camera shows you and the room together
+  const toFloor = route.floors[route.floors.length - 1];
+  if (currentFloor === 'all') { resetView(); return; }       // whole building already in view
+  if (currentFloor !== toFloor) showFloor(toFloor);
+  const y = floorY(toFloor);
+  const [ax, az] = route.from, [bx, bz] = route.to;
+  const mid = new THREE.Vector3((ax + bx) / 2, y, (az + bz) / 2);
+  const span = Math.max(12, Math.hypot(bx - ax, bz - az));
+  flyTo(new THREE.Vector3(mid.x - span * 0.25, y + span * 0.9, mid.z + span * 0.9), mid);
+}
+
+// test helper: open a photo straight from the address bar, e.g. index.html?photo=hall_2
+const startPhoto = new URLSearchParams(location.search).get('photo');
+const hereTest = new URLSearchParams(location.search);
+// test helper: ?me=1,30,20&to=room207&q=wheelchair  (place mascot, then route)
+if (hereTest.get('me')) { const [f, x, z] = hereTest.get('me').split(',').map(Number); placeMe(f, x, z); }
+if (hereTest.get('to')) setTimeout(() => { lastQuery = hereTest.get('q') || ''; const r = ALL_ROOMS.find(x => x.id === hereTest.get('to')); if (r) goToRoom(r); }, 400);
+if (hereTest.get('here') && photoById[hereTest.get('here')])
+  setTimeout(async () => { await loadSizes(); showYouAreHere(photoById[hereTest.get('here')], Number(hereTest.get('view') ?? 0.5)); }, 300);
+if (startPhoto && photoById[startPhoto]) setTimeout(() => openPhoto(startPhoto), 300);
+
+// ------------------------------------------------------------------
+// 7. START + RENDER LOOP
+// ------------------------------------------------------------------
+const startFloor = new URLSearchParams(location.search).get('floor');
+showFloor(startFloor === 'all' ? 'all' : Number(startFloor) || BUILDING.floors[0].id);
+{ const y = currentFloor === 'all' ? FLOOR_GAP / 2 : floorY(currentFloor);
+  controls.target.set(center.x, y, center.z);
+  camera.position.set(center.x - 18 * K, y + 40 * K, center.z + 40 * K); }
+
+const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function loop(now) {
+  if (anim) {
+    const k = Math.min(1, (now - anim.t0) / anim.ms), e = ease(k);
+    camera.position.lerpVectors(anim.p0, anim.p1, e);
+    controls.target.lerpVectors(anim.q0, anim.q1, e);
+    if (k === 1) anim = null;
+  }
+  if (mascot.parent) {                   // pulsing ring under the mascot
+    const k = 1 + ((now / 1000) % 1.2) * 1.5;
+    mascot.userData.ring.scale.set(k, k, k);
+    mascot.userData.ring.material.opacity = Math.max(0, 0.9 - (k - 1) / 1.8);
+  }
+  if (routeDots.length) animateDots(now);
+  if (walking) updateWalk(now);
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

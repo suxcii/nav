@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+requests
+
+# Chat (Unofficial Guide)
+sentence-transformers
+pdfplumber   # only needed to re-run ingest.py
+
+# Only for "Where am I?" and voice
+torch
+transformers
+pillow
+numpy
