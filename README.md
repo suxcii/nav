@@ -1,4 +1,4 @@
-# av.sfbu
+# nav.sfbu
 
 A 3D indoor navigation app and campus guide chat for San Francisco Bay University, powered by AI running locally on an NVIDIA DGX.
 
