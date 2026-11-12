@@ -6,3 +6,4 @@ venv/
 .DS_Store
 Thumbs.db
 .vscode/
+backend/rag_data/documents/*.pdf
