@@ -262,6 +262,7 @@ const PHOTOS = [
   { id: "sfbu_hallway",   file: "assets/photos/sfbu_hallway.jpg",   floor: 2, x: 76, z: 11.5, facing: "top" },
   { id: "sfbu_classroom", file: "assets/photos/sfbu_classroom.jpg", floor: 2, x: 61, z: 18,   facing: "top" },   // Makerspace = Room 207
 ];
+const SHOW_PHOTO_ICONS = false;   // camera icons on the map (true = show them)
 const MAX_LINK = 18;   // meters: photos further apart than this don't get an arrow
 
 // What kind of photos are you using?
@@ -424,7 +425,7 @@ for (const ph of PHOTOS) {
   div.onclick = () => openPhoto(ph.id);
   const obj = new CSS2DObject(div);
   obj.position.set(ph.x, 1.2, ph.z);
-  floorGroups[ph.floor].add(obj);
+  if (SHOW_PHOTO_ICONS) floorGroups[ph.floor].add(obj);
   camIcons[ph.id] = obj;
 }
 
