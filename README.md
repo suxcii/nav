@@ -179,7 +179,7 @@ nav/
 
 ## Notes
 
-- Built for the NVIDIA DGX Hackathon by [Team name]: [Member 1], [Member 2], [Member 3].
+- Built for the NVIDIA DGX Hackathon.
 - Floor plans are approximate, drawn by hand from walking the building.
 - Class times come from SFBU Course Registration. Guide answers come only from the documents in `backend/rag_data/documents/` and are not official SFBU advice.
 - Some panoramas show people. Ask for permission before publishing them, or blur faces first.
